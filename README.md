@@ -1414,7 +1414,7 @@ CF_KEY = 你的Global API Key
 
 ### Snippets 说明
 
-*   Snippets 版不支持 Cron Trigger → 无定时仪表盘；`/stats` 命令也依赖 D1，Snippets 不可用。
+*   CF 用量监控功能**未在 Snippets 版实现**（依赖 D1 存储仪表盘状态 + Cron 定时触发，Snippets 均不支持）。此功能仅 Worker 版可用。
 
 ---
 
