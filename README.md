@@ -570,6 +570,9 @@ let SUBINI = 'https://raw.githubusercontent.com/'+'cm'+'liu/ACL4SSR/main/'+'Cl'+
 | `CF_TOKEN` | Cloudflare API Token (用于统计) | `Go...` | ❌ |
 | `CF_EMAIL` | Cloudflare Email (Global Key 模式) | `user@example.com` | ❌ |
 | `CF_KEY` | Cloudflare Global API Key | `868...` | ❌ |
+| `CF_ZONE_ID` | Cloudflare 区域 ID (用于 Zone HTTP 统计，可选) | `b3f...` | ❌ |
+| `STATS_ENABLED` | **CF 用量 TG 仪表盘开关** (`true`/`false`，后台也可配置) | `false` | ❌ |
+| `STATS_CHAT_ID` | 仪表盘推送目标 Chat ID (留空则用 `TG_CHAT_ID`) | `123456789` | ❌ |
 | `WL_IP` | **静态白名单 IP** (免检，视为管理员)<br>**✅ 支持多个，使用英文逗号分隔** | `1.2.3.4` 或<br>`1.1.1.1,2.2.2.2` | ✅ |
 
 ### 🌍 节点来源配置
@@ -1371,6 +1374,50 @@ CF_KEY = 你的Global API Key
 
 ---
 
+## 📡 CF 用量实时监控（Telegram）
+
+> **⚠️ 本章节仅适用于 Worker 版。** 通过 Telegram 实时查看 Cloudflare 用量，支持 **Cron 定时刷新仪表盘** 和 **`/stats` 命令查询** 两种方式。
+
+### 功能说明
+
+| 方式 | 触发 | 行为 |
+| :--- | :--- | :--- |
+| **定时仪表盘** | Cron 每 30 分钟 | 自动刷新**同一条** TG 消息（不刷屏） |
+| **命令查询** | TG 发送 `/stats` | 实时返回当前用量（额外显示分布详情） |
+
+### 显示内容
+
+**Workers 调用量**（对应免费额度 10 万/天）：
+*   进度条 + 百分比 + 状态灯（🟢 <50% / 🟡 50-80% / 🔴 >80%）
+*   Workers / Pages 分项、剩余额度、较上次趋势（▲▼）
+
+**Zone 区域流量**（需配 `CF_ZONE_ID`）：
+*   总请求 / 威胁拦截🛡️ / 缓存命中率 / 带宽流量
+
+**分布详情**（仅 `/stats` 命令，各 Top5）：
+*   🌍 国家分布 / 📊 状态码分布 / 📱 设备分布
+
+### 配置步骤
+
+1.  **配 CF 凭证**：后台 ☁️ → 填 `CF_ID`+`CF_TOKEN`（或 `CF_EMAIL`+`CF_KEY`）+ Zone ID
+    *   Token 需勾选 **Account Analytics: Read** + **Zone Analytics: Read**
+2.  **开启仪表盘**：后台 🤖 → 勾选「CF 用量仪表盘」开关 →（可选填推送 Chat ID）→ 保存
+3.  **设 Cron Trigger**：CF Workers 后台 → Settings → Triggers → Cron Triggers → 添加 `*/30 * * * *`
+4.  **设 Webhook**（命令查询用）：后台 🤖 → 点「设置 Webhook」按钮（自动注册 `/tg/webhook`）
+5.  **测试**：等 Cron 刷新，或在 TG 给 Bot 发 `/stats`
+
+### 资源占用
+
+*   CPU 消耗极低（亚毫秒级 JSON 解析；主要耗时在等网络，不计入 CPU）
+*   Cron 每 30 分钟一次 = 48 次/天；分布维度用 `limit 5` 锁定数据量
+*   实测总 CPU 约 4-5ms，远低于免费版 10ms 墙，**不会触发功耗墙**
+
+### Snippets 说明
+
+*   Snippets 版不支持 Cron Trigger → 无定时仪表盘；`/stats` 命令也依赖 D1，Snippets 不可用。
+
+---
+
 ## 📝 访问日志与统计详解
 
 > **⚠️ 本章节仅适用于 Worker 版。Snippets 版不支持访问日志和统计功能。**
@@ -1447,6 +1494,12 @@ CREATE TABLE stats (
   - 参数：`{"ip": "1.2.3.4"}`
 - `?flag=save_config` - 保存配置到 D1（POST，需登录）
   - 参数：`{"KEY": "VALUE", ...}`
+- `?flag=set_webhook` - 一键注册 Telegram Webhook 为本域名 `/tg/webhook`（POST，需登录）
+  - 用于启用 `/stats` 命令查询
+
+**CF 用量监控接口：**
+- `/tg/webhook` - Telegram Webhook 回调入口（POST）
+  - 接收 TG 推送，识别 `/stats` 命令后回复 CF 用量（仅响应配置的 Chat ID）
 
 **验证接口：**
 - `?flag=validate_tg` - 验证 TG 配置（POST）
@@ -1599,4 +1652,10 @@ const PC = "你的检测网站URL";
    DELETE FROM stats;
    ```
 3. 重新部署代码。
+
+### Q11: CF 用量 TG 仪表盘不刷新 / `/stats` 没反应？
+
+*   **仪表盘不刷新**：确认已在 CF Workers 后台添加 Cron Trigger `*/30 * * * *`，且后台「CF 用量仪表盘」开关已开启。Snippets 版不支持 Cron。
+*   **`/stats` 没反应**：确认已点后台「设置 Webhook」按钮，且发命令的 Chat ID 与配置的推送 Chat ID 一致（白名单校验）。
+*   **Zone 数据为空**：CF Token 需勾选 **Zone Analytics: Read** 且配置正确的 `CF_ZONE_ID`；分布查询失败不影响基础统计。
 
